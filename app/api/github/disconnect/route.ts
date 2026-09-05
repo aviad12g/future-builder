@@ -1,0 +1,2 @@
+import {user,db,readState,saveState,json,fail,sameOrigin} from '@/lib/server';
+export async function POST(request:Request){try{sameOrigin(request);const uid=await user();await db().prepare('DELETE FROM github_tokens WHERE user_id = ?').bind(uid).run();const current=await readState(uid);current.state.github=null;return json({state:current.state,revision:await saveState(uid,current.state,current.revision)});}catch(e){return fail(e)}}

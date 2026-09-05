@@ -1,0 +1,4 @@
+import {user,db,readState,json,fail,sameOrigin,ApiError} from '@/lib/server';
+import {collectMarket} from '@/lib/market';
+export async function GET(){try{const uid=await user();const r=await db().prepare('SELECT payload FROM market_snapshots WHERE user_id = ? ORDER BY date DESC LIMIT 104').bind(uid).all<{payload:string}>();return json({snapshots:r.results.map(r=>JSON.parse(r.payload)).reverse()});}catch(e){return fail(e)}}
+export async function POST(request:Request){try{sameOrigin(request);const uid=await user(),{state}=await readState(uid);const last=await db().prepare('SELECT date FROM market_snapshots WHERE user_id = ? ORDER BY date DESC LIMIT 1').bind(uid).first<{date:string}>();if(last&&Date.now()-new Date(last.date).getTime()<3600000)throw new ApiError('The latest snapshot is less than an hour old. Give the market time to change.',429);return json({snapshot:await collectMarket(uid,state.profile.boards,state.profile.market)});}catch(e){return fail(e)}}
