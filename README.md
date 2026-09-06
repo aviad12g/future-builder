@@ -1,5 +1,7 @@
 # Future Builder
 
+[Open the public app](https://future-builder.aviadcoh.chatgpt.site) · Sign in to save your own progress.
+
 A personal application for energy-aware focus, SAT study, serious engineering work, and university preparation. Built with React 19, TypeScript, Vinext, Cloudflare D1, and the Sites authentication boundary.
 
 ## Run and verify
@@ -80,8 +82,8 @@ No emails, applications, payments, assessed work, GitHub writes, or messages are
 - Production build and TypeScript check passed.
 - Nine model tests passed: clean initial state, milestone evidence/dependencies, idempotent session saving, SAT validation, restart behavior, project definitions, and FSRS state/history.
 - Local HTTP checks passed: unauthenticated rejection, persisted account state, stale revision conflicts, cross-origin rejection, JSON round-trip saves, and invalid observation rejection. Only a marked synthetic development record was created and removed.
-- The optional WebMCP actions are feature-detected. The available browser did not expose them to the validation tool; they are not claimed verified.
-- Broader screenshot/interaction browser QA was not performed. Browser handoff and HTTP rendering are distinct from visual QA.
+- The optional WebMCP actions are feature-detected. Navigation was exercised through the exposed tool during the mobile preview check; task recommendations were not independently browser-verified.
+- A 402 × 874 browser preview was inspected for the homepage, mobile sidebar, and SAT studio. Sidebar navigation worked and the SAT screen had no horizontal page overflow. This was not a physical iPhone or Safari test, and it does not cover every screen or workflow.
 
 ## Architecture
 
