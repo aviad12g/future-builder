@@ -21,9 +21,9 @@ The generated Drizzle migration in `drizzle/` must be applied to local D1 before
 ## Working features
 
 - Energy and available-time-based suggestions, 1–3 tasks; a seven-day restart plan with rest days.
-- Isolated focus mode: elapsed-time-based timer, pause/resume, custom length, Pomodoro phases, optional brown-noise ambience and chime, stuck coaching, distraction capture, notes, and a completion summary.
+- Task-aware focus mode: engineering milestones open a structured mentor workspace; due SAT review tasks contain the exact assigned mistake IDs and render active recall in place; new SAT practice opens its question workflow. Shared timer, notes, distraction capture, ambience, and session saving remain available as supporting tools.
 - Server-persisted sessions, evidence-backed milestone completion, skill stages, university checklists, reflections, saved resources, and preferences. Revision checks prevent stale tabs from overwriting new state. Session IDs make retrying a save idempotent.
-- SAT test and practice logs, score chart, topic accuracy map, mistake notebook, and adaptive FSRS review. Real test scores are recorded separately from practice accuracy.
+- Question-based SAT practice sessions with editable screenshot extraction, multiple-choice and open-response answers, automatic statistics, and direct linkage of every wrong question to the canonical FSRS Mistake Notebook. Legacy aggregate practice records remain readable.
 - Twenty-four substantial project definitions, eight ordered milestones each, project-fit scoring, engineering notes, repository links, and ten design-defense questions per project.
 - Skill constellation, evidence-driven roadmap, 12-week activity heatmap, achievements tied to real actions, weekly/monthly evidence reviews, and JSON export.
 - Curated learning library and SAT practice room with provider links, saved shelves, focus actions, and copyable tutoring prompts. Includes Khan Academy, Bluebook, Student Question Bank, Schoolhouse, Gemini SAT practice, MIT, OSTEP, Beej, Docker, Kubernetes, AWS Educate, fast.ai, Google ML Crash Course, RDKit, OpenStax, EducationUSA, and open-source/community guides.
@@ -38,6 +38,15 @@ No College Board, Khan SAT, or Princeton Review question bank is copied into thi
 A maintained open-source renderer, Khan Perseus, was considered but not forced into this React 19 application: its inspected peer requirements were React 18 and multiple Wonder Blocks packages. Khan's archived `khan-exercises` framework is MIT but the exercises are CC BY-NC-SA; that old corpus is not included or described as state of the art. A trustworthy openly licensed complete digital-SAT bank was not established.
 
 The app uses the learner's own saved questions/summaries and verified explanations for local mistake review. It does not administer a calibrated adaptive SAT, automatically grade admission prospects, infer mastery from dependencies, or produce predicted SAT scores. External results must be logged by the learner; no external account contents are silently imported.
+
+## Enable SAT screenshot extraction
+
+Configure these hosted environment values through Sites:
+
+- `OPENAI_API_KEY`: a server-side API key. It is never returned to the browser or stored in AppState.
+- `OPENAI_VISION_MODEL`: optional; defaults to `gpt-5.4-mini`.
+
+The `/api/sat/extract` route accepts an authenticated PNG, JPEG, WebP, or GIF of at most 8 MB and sends it to the OpenAI Responses API with a strict structured-output schema. The learner must review and edit every extraction before saving. Source images needed for graphs, diagrams, charts, or tables are stored privately in the `SAT_IMAGES` R2 binding and fetched through an authenticated owner-scoped route; base64 image data is never added to the D1 AppState document. Sites provisions the R2 binding declared in `.openai/hosting.json` during deployment.
 
 ## Enable GitHub OAuth
 
@@ -57,7 +66,7 @@ The flow uses PKCE, random single-use state tied to the signed-in site account, 
 
 Sync reads up to 20 recently active repositories, their root files, languages, bounded README, up to ten recent commits and pull requests, available CI metadata, and latest release. README-keyword/readiness signals require manual verification. They are not code quality or mastery judgments. With no credentials configured, the app explains the pending connection instead of simulating authorization.
 
-GitHub OAuth, live GitHub data, and encrypted-token round trips were implemented but have not been end-to-end verified against a real user account in this build.
+The callback now performs the initial profile and owned-public-repository synchronization before reporting success, persists the encrypted token and updated state together, and reports distinct actionable failures for denial, state/PKCE, exchange, encryption, persistence, revocation, rate limiting, and synchronization. GitHub OAuth, live GitHub data, and encrypted-token round trips have still not been end-to-end verified against a real user account in this build.
 
 ## Enable market snapshots
 
@@ -80,13 +89,12 @@ No emails, applications, payments, assessed work, GitHub writes, or messages are
 ## Verification evidence
 
 - Production build and TypeScript check passed.
-- Nine model tests passed: clean initial state, milestone evidence/dependencies, idempotent session saving, SAT validation, restart behavior, project definitions, and FSRS state/history.
+- Twenty-one model and domain tests passed, including all project milestone guidance, exact due-mistake task IDs, bare-minimum selection, screenshot extraction contracts, multiple-choice and open-response grading, automatic session statistics, the full question-to-Mistake-to-Focus-to-FSRS loop, legacy state hydration, and OAuth/PKCE/encryption helpers.
 - Local HTTP checks passed: unauthenticated rejection, persisted account state, stale revision conflicts, cross-origin rejection, JSON round-trip saves, and invalid observation rejection. Only a marked synthetic development record was created and removed.
-- The optional WebMCP actions are feature-detected. Navigation was exercised through the exposed tool during the mobile preview check; task recommendations were not independently browser-verified.
-- A 402 × 874 browser preview was inspected for the homepage, mobile sidebar, and SAT studio. Sidebar navigation worked and the SAT screen had no horizontal page overflow. This was not a physical iPhone or Safari test, and it does not cover every screen or workflow.
+- A real local browser walkthrough verified engineering task guidance, editable question entry, distinct learner/correct answers, automatic incorrect grading, canonical Mistake creation, due recommendation selection, active-recall review inside Focus, the shared FSRS rating, and the completion summary.
 
 ## Architecture
 
-`lib/model.ts` defines typed records, validation, immutable action reduction, and recommendations. `lib/spaced-review.ts` adapts FSRS. `lib/server.ts` provides identity, prepared D1 access, bounded request handling, revision-safe writes, and token encryption. `lib/market.ts` owns ingestion. `components/` contains the working surfaces. `db/schema.ts` and generated Drizzle migrations own all schema changes.
+`lib/model.ts` defines the versioned AppState, discriminated task union, structured SAT sessions/questions, validation, immutable action reduction, and recommendations. `lib/milestone-guides.ts` supplies reusable milestone guidance across the engineering library. `lib/spaced-review.ts` remains the single FSRS adapter. `lib/server.ts` provides identity, prepared D1 access, bounded request handling, revision-safe writes, and token encryption; `lib/oauth.ts` contains testable origin/state/PKCE/encryption primitives and `lib/github.ts` owns GitHub synchronization. SAT screenshots live in R2 while structured questions and their canonical Mistake links live in the versioned D1 state document. `lib/market.ts` owns ingestion. `components/` contains the working surfaces. `db/schema.ts` and generated Drizzle migrations own schema changes.
 
 The homepage loads a light overview and loads deeper sections on demand. The GitHub and scheduled-job paths fail closed when their secrets are absent.

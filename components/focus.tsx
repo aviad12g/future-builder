@@ -1,19 +1,606 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
-import {ArrowLeft,ArrowRight,Check,ChevronDown,Expand,Feather,Headphones,HelpCircle,LoaderCircle,Pause,Play,Plus,Sparkles,Sprout,X} from 'lucide-react';
-import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from '@/components/ui/dialog';
-import {Checkbox} from '@/components/ui/checkbox';
-import {Progress} from '@/components/ui/progress';
-import {Choice,useApp} from './shared';
-import {type Task,progress} from '@/lib/model';
-const stuckKinds=['I don’t understand the concept','I don’t know what to do next','I have a bug','The task is too large','I can’t concentrate','I’m too tired'];
-export function Focus({task:initial,onClose}:{task:Task;onClose:()=>void}){const{state,send,notify,demo}=useApp();const[task,setTask]=useState(initial),[duration,setDuration]=useState(initial.minutes),[custom,setCustom]=useState('30'),[mode,setMode]=useState('Uninterrupted'),[running,setRunning]=useState(false),[elapsed,setElapsed]=useState(0),[notes,setNotes]=useState(''),[capture,setCapture]=useState(''),[stuck,setStuck]=useState(false),[kind,setKind]=useState(''),[finish,setFinish]=useState(false),[outcome,setOutcome]=useState('Made progress'),[mark,setMark]=useState(false),[saving,setSaving]=useState(false),[celebrate,setCelebrate]=useState(false),[ambient,setAmbient]=useState(false);const anchor=useRef(0),base=useRef(0),sessionId=useRef(crypto.randomUUID()),audioRef=useRef<AudioContext|null>(null);const project=state.projects.find(p=>p.id===task.projectId);const nextIndex=project?.milestones.findIndex(m=>!m.done)??-1;const initialProgress=useRef(project?progress(project):0);const total=duration*60;const phase=mode==='Pomodoro'&&elapsed%1800>=1500?'A five-minute break':'Your focus time';
-useEffect(()=>{if(!running)return;anchor.current=Date.now();base.current=elapsed;const timer=setInterval(()=>{const seconds=Math.min(total,base.current+Math.floor((Date.now()-anchor.current)/1000));setElapsed(seconds);if(seconds>=total){setRunning(false);setFinish(true);if(state.profile.sounds)chime()}},300);return()=>clearInterval(timer)},[running,total]);
-useEffect(()=>{const handler=(e:BeforeUnloadEvent)=>{if(elapsed>0&&!celebrate){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',handler);return()=>window.removeEventListener('beforeunload',handler)},[elapsed,celebrate]);
-useEffect(()=>()=>{audioRef.current?.close()},[]);
-function chime(){try{const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(660,c.currentTime);g.gain.setValueAtTime(.04,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.8);o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+.8);setTimeout(()=>c.close(),1000)}catch{}}
-async function ambience(){if(ambient){await audioRef.current?.close();audioRef.current=null;setAmbient(false);return}try{const c=new AudioContext();const size=c.sampleRate*3,buffer=c.createBuffer(1,size,c.sampleRate),data=buffer.getChannelData(0);let last=0;for(let i=0;i<size;i++){last=(last+.02*(Math.random()*2-1))/1.02;data[i]=last*3.5}const source=c.createBufferSource(),gain=c.createGain();source.buffer=buffer;source.loop=true;gain.gain.value=.06;source.connect(gain);gain.connect(c.destination);source.start();audioRef.current=c;setAmbient(true)}catch{notify('Audio is unavailable in this browser.',true)}}
-async function save(){setSaving(true);try{await send({type:'session.finish',payload:{id:sessionId.current,task,seconds:elapsed,notes,outcome:outcome==='Task completed'?'completed':outcome==='Rest is the right next step'?'rest':'progress',energy:state.profile.energy}});if(mark&&project&&nextIndex>=0)await send({type:'milestone.complete',payload:{id:project.id,index:nextIndex,evidence:notes}});setCelebrate(true);setFinish(false);if(state.profile.sounds)chime();}catch{}finally{setSaving(false)}}
-const smaller=kind==='I’m too tired'?'Reread one note. Write one sentence. Then you can rest.':kind==='I can’t concentrate'?'Save the thought that’s pulling at you. Take one slow breath, then work on one example for five minutes.':kind==='I have a bug'?'Write expected versus actual behavior. Reproduce it with the smallest input. Change one thing, then rerun the test.':kind==='I don’t understand the concept'?'Name the one term you cannot explain. Read its definition, then explain it in your own words with a tiny example.':kind==='I don’t know what to do next'?task.step:`Define the input and expected output for one example of “${task.title}”. You only need the first step now.`;
-if(celebrate)return <div className="focus-screen celebration"><div className="celebration-mark"><Sprout size={44}/></div><div className="eyebrow">THAT WAS A STEP FORWARD.</div><h1>You made room for your future.</h1><p>{elapsed>=60?Math.floor(elapsed/60)+' minutes':elapsed+' seconds'} of focused effort. That belongs to you.</p><div className="completion-stats"><div><span>Focused work</span><strong>+{Math.floor(elapsed/60)}<small> min</small></strong></div><div><span>{mark?'Project progress':'Session recorded'}</span><strong>{mark?`${initialProgress.current}% → ${project?progress(project):0}%`:'✓'}</strong></div></div><div className="chips">{task.skills.map(s=><span key={s}>{s}</span>)}</div><p className="soft-copy">{mark?'One more milestone has evidence behind it.':'Your effort is saved. Mark the milestone when the work is ready.'}</p>{demo&&<span className="preview-label">EXAMPLE JOURNEY · CHANGES ARE NOT SAVED</span>}<button className="primary" onClick={onClose}>Back to your space<ArrowRight size={17}/></button></div>;
-return <div className={'focus-screen '+(state.profile.ambience?'ambient-motion':'')}><header className="focus-header"><button className="text-button" onClick={()=>{if(elapsed>0){setRunning(false);setFinish(true)}else onClose()}}><ArrowLeft size={17}/>Your space</button><span><Sprout size={18}/>future builder <i>/</i> focus</span><button className="icon-button" aria-label="Toggle fullscreen" onClick={async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch{notify('Fullscreen is unavailable in this browser.')}}}><Expand size={18}/></button></header><div className="focus-content"><div className="eyebrow"><span className="live-dot"/>{running?phase.toUpperCase():'ONE THING AT A TIME'}</div><h1>{task.title}</h1><p className="focus-why">{task.why}</p><div className="focus-clock" role="timer" aria-label={`${Math.floor(Math.max(0,total-elapsed)/60)} minutes remaining`}>{String(Math.floor(Math.max(0,total-elapsed)/60)).padStart(2,'0')}<span>:</span>{String(Math.max(0,total-elapsed)%60).padStart(2,'0')}</div><Progress value={elapsed/total*100}/><div className="timer-options">{[10,15,25,45,60,90].map(d=><button key={d} disabled={elapsed>0} className={duration===d?'selected':''} onClick={()=>setDuration(d)}>{d}m</button>)}<label className="custom-duration"><span className="sr-only">Custom minutes</span><input type="number" min={1} max={180} value={custom} disabled={elapsed>0} onChange={e=>{setCustom(e.target.value);const n=Number(e.target.value);if(Number.isInteger(n)&&n>=1&&n<=180)setDuration(n)}}/>min</label></div><div className="focus-controls"><button className="primary" onClick={()=>setRunning(!running)}>{running?<Pause size={17}/>:<Play size={17}/>} {running?'Pause':elapsed?'Continue':'Begin focus'}</button><button className="quiet-button" onClick={()=>{setRunning(false);setFinish(true)}}><Check size={16}/>Finish session</button></div><div className="focus-utilities"><Choice label="Session style" value={mode} options={['Uninterrupted','Pomodoro']} onChange={setMode}/><button className={'text-button '+(ambient?'enabled':'')} onClick={ambience}><Headphones size={15}/>{ambient?'Sound on':'Quiet ambience'}</button></div>{mode==='Pomodoro'&&<p className="helper">25 minutes of work, then 5 minutes to breathe. Choose 60 or 90 minutes for multiple cycles.</p>}<details className="focus-notes"><summary>Session notes <ChevronDown size={15}/></summary><textarea aria-label="Focus session notes" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="What did you try? What should future you remember?" maxLength={10000}/></details><form className="capture-box" onSubmit={async e=>{e.preventDefault();if(!capture.trim())return;try{await send({type:'capture.add',payload:{text:capture}});setCapture('');notify('Saved for later. You can stay right here.')}catch{}}}><Plus size={17}/><input value={capture} maxLength={1000} onChange={e=>setCapture(e.target.value)} placeholder="A distracting thought? Save it for later…" aria-label="Save a thought for later"/><button type="submit" aria-label="Save thought"><ArrowRight size={17}/></button></form><button className="stuck-button" onClick={()=>{setStuck(true);setKind('')}}><HelpCircle size={16}/>I’m stuck</button></div><div className="focus-bottom">You don’t have to do everything. Just this one thing.</div><Dialog open={stuck} onOpenChange={setStuck}><DialogContent className="app-dialog"><DialogHeader><DialogTitle>{kind?'Let’s make the next step smaller.':'What’s getting in the way?'}</DialogTitle><DialogDescription>{kind?'You can change the task without losing your effort.':'A little friction is normal. Let’s find a useful way through.'}</DialogDescription></DialogHeader>{!kind?<div className="stuck-options">{stuckKinds.map(k=><button className="option-row" key={k} onClick={()=>setKind(k)}>{k}<ArrowRight size={16}/></button>)}</div>:<><p className="guidance">{smaller}</p>{kind==='The task is too large'&&<ol className="small-steps"><li>Define one input and expected output.</li><li>Implement one happy-path example.</li><li>Add one error case.</li><li>Write one test for it.</li></ol>}<button className="primary" onClick={()=>{setTask({...task,title:kind==='I’m too tired'?'Reread one note. Write one sentence.':'Work through one small example',step:smaller});setStuck(false);setRunning(true)}}>Continue with this step<ArrowRight size={16}/></button>{(kind==='I’m too tired'||kind==='I can’t concentrate')&&<button className="quiet-button" onClick={()=>{setStuck(false);setRunning(false);setOutcome('Rest is the right next step');setFinish(true)}}>Rest is a useful next step</button>}<button className="text-button" onClick={()=>setKind('')}>Choose a different reason</button></>}</DialogContent></Dialog><Dialog open={finish} onOpenChange={v=>!saving&&setFinish(v)}><DialogContent className="app-dialog"><DialogHeader><DialogTitle>What moved forward?</DialogTitle><DialogDescription>{Math.floor(elapsed/60)} minutes recorded. A useful attempt counts, too.</DialogDescription></DialogHeader><Choice label="Session outcome" value={outcome} options={['Made progress','Task completed','Rest is the right next step']} onChange={setOutcome}/><label className="field"><span>A note for future you</span><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="What changed? Add a test result, commit link, or the next small step." maxLength={10000}/></label>{project&&nextIndex>=0&&<label className="checkbox-row"><Checkbox checked={mark} onCheckedChange={setMark}/><span>Also complete “{project.milestones[nextIndex].title}”<small>A concrete evidence note is required.</small></span></label>}<button className="primary" onClick={save} disabled={saving||mark&&!notes.trim()}>{saving?<LoaderCircle size={16} className="spin"/>:<Check size={16}/>}Save this session</button><button className="text-button" onClick={()=>{setFinish(false);setRunning(true)}}>Keep going</button></DialogContent></Dialog></div>}
+import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Expand,
+  Feather,
+  Headphones,
+  HelpCircle,
+  LoaderCircle,
+  Pause,
+  Play,
+  Plus,
+  Sparkles,
+  Sprout,
+  X,
+} from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
+import { Choice, useApp } from './shared';
+import { guideForTask, type Task, progress } from '@/lib/model';
+import {
+  EngineeringFocusWorkspace,
+  SatReviewFocusWorkspace,
+} from './focus-workspaces';
+import { SatPracticeWorkspace } from './sat-practice';
+const stuckKinds = [
+  'I don’t understand the concept',
+  'I don’t know what to do next',
+  'I have a bug',
+  'The task is too large',
+  'I can’t concentrate',
+  'I’m too tired',
+];
+export function Focus({
+  task: initial,
+  onClose,
+}: {
+  task: Task;
+  onClose: () => void;
+}) {
+  const { state, send, notify, demo } = useApp();
+  const [task, setTask] = useState(initial),
+    [duration, setDuration] = useState(initial.minutes),
+    [custom, setCustom] = useState('30'),
+    [mode, setMode] = useState('Uninterrupted'),
+    [running, setRunning] = useState(false),
+    [elapsed, setElapsed] = useState(0),
+    [notes, setNotes] = useState(''),
+    [capture, setCapture] = useState(''),
+    [stuck, setStuck] = useState(false),
+    [kind, setKind] = useState(''),
+    [checkpoint, setCheckpoint] = useState(0),
+    [finish, setFinish] = useState(false),
+    [outcome, setOutcome] = useState('Made progress'),
+    [mark, setMark] = useState(false),
+    [saving, setSaving] = useState(false),
+    [celebrate, setCelebrate] = useState(false),
+    [ambient, setAmbient] = useState(false);
+  const anchor = useRef(0),
+    base = useRef(0),
+    sessionId = useRef(crypto.randomUUID()),
+    audioRef = useRef<AudioContext | null>(null);
+  const project =
+    task.kind === 'engineering'
+      ? state.projects.find((p) => p.id === task.projectId)
+      : undefined;
+  const nextIndex = project?.milestones.findIndex((m) => !m.done) ?? -1;
+  const initialProgress = useRef(project ? progress(project) : 0);
+  const total = duration * 60;
+  const phase =
+    mode === 'Pomodoro' && elapsed % 1800 >= 1500
+      ? 'A five-minute break'
+      : 'Your focus time';
+  useEffect(() => {
+    if (!running) return;
+    anchor.current = Date.now();
+    base.current = elapsed;
+    const timer = setInterval(() => {
+      const seconds = Math.min(
+        total,
+        base.current + Math.floor((Date.now() - anchor.current) / 1000),
+      );
+      setElapsed(seconds);
+      if (seconds >= total) {
+        setRunning(false);
+        setFinish(true);
+        if (state.profile.sounds) chime();
+      }
+    }, 300);
+    return () => clearInterval(timer);
+  }, [running, total]);
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (elapsed > 0 && !celebrate) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [elapsed, celebrate]);
+  useEffect(
+    () => () => {
+      audioRef.current?.close();
+    },
+    [],
+  );
+  function chime() {
+    try {
+      const c = new AudioContext(),
+        o = c.createOscillator(),
+        g = c.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(660, c.currentTime);
+      g.gain.setValueAtTime(0.04, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.8);
+      o.connect(g);
+      g.connect(c.destination);
+      o.start();
+      o.stop(c.currentTime + 0.8);
+      setTimeout(() => c.close(), 1000);
+    } catch {}
+  }
+  async function ambience() {
+    if (ambient) {
+      await audioRef.current?.close();
+      audioRef.current = null;
+      setAmbient(false);
+      return;
+    }
+    try {
+      const c = new AudioContext();
+      const size = c.sampleRate * 3,
+        buffer = c.createBuffer(1, size, c.sampleRate),
+        data = buffer.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < size; i++) {
+        last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+        data[i] = last * 3.5;
+      }
+      const source = c.createBufferSource(),
+        gain = c.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.value = 0.06;
+      source.connect(gain);
+      gain.connect(c.destination);
+      source.start();
+      audioRef.current = c;
+      setAmbient(true);
+    } catch {
+      notify('Audio is unavailable in this browser.', true);
+    }
+  }
+  async function save() {
+    setSaving(true);
+    try {
+      await send({
+        type: 'session.finish',
+        payload: {
+          id: sessionId.current,
+          task,
+          seconds: elapsed,
+          notes,
+          outcome:
+            outcome === 'Task completed'
+              ? 'completed'
+              : outcome === 'Rest is the right next step'
+                ? 'rest'
+                : 'progress',
+          energy: state.profile.energy,
+        },
+      });
+      if (mark && project && nextIndex >= 0)
+        await send({
+          type: 'milestone.complete',
+          payload: { id: project.id, index: nextIndex, evidence: notes },
+        });
+      setCelebrate(true);
+      setFinish(false);
+      if (state.profile.sounds) chime();
+    } catch {
+    } finally {
+      setSaving(false);
+    }
+  }
+  const guide =
+      task.kind === 'engineering' ? guideForTask(state, task) : undefined,
+    currentStep = guide?.steps[checkpoint];
+  const smaller =
+    kind === 'I’m too tired'
+      ? 'Reread one note. Write one sentence. Then you can rest.'
+      : kind === 'I can’t concentrate'
+        ? 'Save the thought that’s pulling at you. Take one slow breath, then return to the current question or checkpoint for five minutes.'
+        : kind === 'I have a bug'
+          ? `For “${currentStep?.title || task.title}”: write what you expected, what actually happened, and the smallest input that reproduces it. Inspect only the boundary named in this checkpoint, then rerun one test.`
+          : kind === 'I don’t understand the concept'
+            ? `In ${project?.name || task.area}, name the one term inside “${currentStep?.title || task.title}” that you cannot explain. Use this first hint: ${currentStep?.hints?.[0] || 'write a tiny example and explain each part in your own words.'}`
+            : kind === 'I don’t know what to do next'
+              ? currentStep?.instruction || task.step
+              : kind === 'The task is too large'
+                ? `Keep only the current checkpoint: “${currentStep?.title || task.title}”. Ignore every later checkpoint until one small example works.`
+                : `Define the input and expected output for one example of “${task.title}”. You only need the first step now.`;
+  if (celebrate)
+    return (
+      <div className="focus-screen celebration">
+        <div className="celebration-mark">
+          <Sprout size={44} />
+        </div>
+        <div className="eyebrow">THAT WAS A STEP FORWARD.</div>
+        <h1>You made room for your future.</h1>
+        <p>
+          {elapsed >= 60
+            ? Math.floor(elapsed / 60) + ' minutes'
+            : elapsed + ' seconds'}{' '}
+          of focused effort. That belongs to you.
+        </p>
+        <div className="completion-stats">
+          <div>
+            <span>Focused work</span>
+            <strong>
+              +{Math.floor(elapsed / 60)}
+              <small> min</small>
+            </strong>
+          </div>
+          <div>
+            <span>{mark ? 'Project progress' : 'Session recorded'}</span>
+            <strong>
+              {mark
+                ? `${initialProgress.current}% → ${project ? progress(project) : 0}%`
+                : '✓'}
+            </strong>
+          </div>
+        </div>
+        <div className="chips">
+          {task.skills.map((s) => (
+            <span key={s}>{s}</span>
+          ))}
+        </div>
+        <p className="soft-copy">
+          {mark
+            ? 'One more milestone has evidence behind it.'
+            : 'Your effort is saved. Mark the milestone when the work is ready.'}
+        </p>
+        {demo && (
+          <span className="preview-label">
+            EXAMPLE JOURNEY · CHANGES ARE NOT SAVED
+          </span>
+        )}
+        <button className="primary" onClick={onClose}>
+          Back to your space
+          <ArrowRight size={17} />
+        </button>
+      </div>
+    );
+  return (
+    <div
+      className={
+        'focus-screen ' + (state.profile.ambience ? 'ambient-motion' : '')
+      }
+    >
+      <header className="focus-header">
+        <button
+          className="text-button"
+          onClick={() => {
+            if (elapsed > 0) {
+              setRunning(false);
+              setFinish(true);
+            } else onClose();
+          }}
+        >
+          <ArrowLeft size={17} />
+          Your space
+        </button>
+        <span>
+          <Sprout size={18} />
+          future builder <i>/</i> focus
+        </span>
+        <button
+          className="icon-button"
+          aria-label="Toggle fullscreen"
+          onClick={async () => {
+            try {
+              if (document.fullscreenElement) await document.exitFullscreen();
+              else await document.documentElement.requestFullscreen();
+            } catch {
+              notify('Fullscreen is unavailable in this browser.');
+            }
+          }}
+        >
+          <Expand size={18} />
+        </button>
+      </header>
+      <div className="focus-content">
+        <div className="eyebrow">
+          <span className="live-dot" />
+          {running ? phase.toUpperCase() : 'ONE THING AT A TIME'}
+        </div>
+        <h1>{task.title}</h1>
+        <p className="focus-why">{task.why}</p>
+        {task.kind === 'engineering' && (
+          <EngineeringFocusWorkspace
+            task={task}
+            onCheckpointChange={setCheckpoint}
+          />
+        )}{' '}
+        {task.kind === 'sat-review' && (
+          <SatReviewFocusWorkspace
+            task={task}
+            onComplete={(summary) => {
+              setNotes(summary);
+              setOutcome('Task completed');
+              setRunning(false);
+            }}
+          />
+        )}{' '}
+        {task.kind === 'sat-practice' && (
+          <SatPracticeWorkspace
+            task={task}
+            onComplete={(summary) => {
+              setNotes(summary);
+              setOutcome('Task completed');
+              setRunning(false);
+            }}
+          />
+        )}
+        <section className="timer-dock">
+          <span className="workspace-kicker">SESSION SUPPORT</span>
+          <div
+            className="focus-clock"
+            role="timer"
+            aria-label={`${Math.floor(Math.max(0, total - elapsed) / 60)} minutes remaining`}
+          >
+            {String(Math.floor(Math.max(0, total - elapsed) / 60)).padStart(
+              2,
+              '0',
+            )}
+            <span>:</span>
+            {String(Math.max(0, total - elapsed) % 60).padStart(2, '0')}
+          </div>
+          <Progress value={(elapsed / total) * 100} />
+          <div className="timer-options">
+            {[10, 15, 25, 45, 60, 90].map((d) => (
+              <button
+                key={d}
+                disabled={elapsed > 0}
+                className={duration === d ? 'selected' : ''}
+                onClick={() => setDuration(d)}
+              >
+                {d}m
+              </button>
+            ))}
+            <label className="custom-duration">
+              <span className="sr-only">Custom minutes</span>
+              <input
+                type="number"
+                min={1}
+                max={180}
+                value={custom}
+                disabled={elapsed > 0}
+                onChange={(e) => {
+                  setCustom(e.target.value);
+                  const n = Number(e.target.value);
+                  if (Number.isInteger(n) && n >= 1 && n <= 180) setDuration(n);
+                }}
+              />
+              min
+            </label>
+          </div>
+          <div className="focus-controls">
+            <button className="primary" onClick={() => setRunning(!running)}>
+              {running ? <Pause size={17} /> : <Play size={17} />}{' '}
+              {running ? 'Pause' : elapsed ? 'Continue' : 'Begin focus'}
+            </button>
+            <button
+              className="quiet-button"
+              onClick={() => {
+                setRunning(false);
+                setFinish(true);
+              }}
+            >
+              <Check size={16} />
+              Finish session
+            </button>
+          </div>
+          <div className="focus-utilities">
+            <Choice
+              label="Session style"
+              value={mode}
+              options={['Uninterrupted', 'Pomodoro']}
+              onChange={setMode}
+            />
+            <button
+              className={'text-button ' + (ambient ? 'enabled' : '')}
+              onClick={ambience}
+            >
+              <Headphones size={15} />
+              {ambient ? 'Sound on' : 'Quiet ambience'}
+            </button>
+          </div>
+          {mode === 'Pomodoro' && (
+            <p className="helper">
+              25 minutes of work, then 5 minutes to breathe. Choose 60 or 90
+              minutes for multiple cycles.
+            </p>
+          )}
+        </section>
+        <details className="focus-notes">
+          <summary>
+            Session notes <ChevronDown size={15} />
+          </summary>
+          <textarea
+            aria-label="Focus session notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="What did you try? What should future you remember?"
+            maxLength={10000}
+          />
+        </details>
+        <form
+          className="capture-box"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!capture.trim()) return;
+            try {
+              await send({ type: 'capture.add', payload: { text: capture } });
+              setCapture('');
+              notify('Saved for later. You can stay right here.');
+            } catch {}
+          }}
+        >
+          <Plus size={17} />
+          <input
+            value={capture}
+            maxLength={1000}
+            onChange={(e) => setCapture(e.target.value)}
+            placeholder="A distracting thought? Save it for later…"
+            aria-label="Save a thought for later"
+          />
+          <button type="submit" aria-label="Save thought">
+            <ArrowRight size={17} />
+          </button>
+        </form>
+        <button
+          className="stuck-button"
+          onClick={() => {
+            setStuck(true);
+            setKind('');
+          }}
+        >
+          <HelpCircle size={16} />
+          I’m stuck
+        </button>
+      </div>
+      <div className="focus-bottom">
+        You don’t have to do everything. Just this one thing.
+      </div>
+      <Dialog open={stuck} onOpenChange={setStuck}>
+        <DialogContent className="app-dialog">
+          <DialogHeader>
+            <DialogTitle>
+              {kind
+                ? 'Let’s make the next step smaller.'
+                : 'What’s getting in the way?'}
+            </DialogTitle>
+            <DialogDescription>
+              {kind
+                ? 'You can change the task without losing your effort.'
+                : 'A little friction is normal. Let’s find a useful way through.'}
+            </DialogDescription>
+          </DialogHeader>
+          {!kind ? (
+            <div className="stuck-options">
+              {stuckKinds.map((k) => (
+                <button
+                  className="option-row"
+                  key={k}
+                  onClick={() => setKind(k)}
+                >
+                  {k}
+                  <ArrowRight size={16} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              <p className="guidance">{smaller}</p>
+              {kind === 'The task is too large' && (
+                <ol className="small-steps">
+                  <li>Keep only the current checkpoint.</li>
+                  <li>Define one input and expected output.</li>
+                  <li>Run one happy-path example.</li>
+                  <li>Record what happened.</li>
+                </ol>
+              )}
+              <button
+                className="primary"
+                onClick={() => {
+                  setTask({
+                    ...task,
+                    title:
+                      kind === 'I’m too tired'
+                        ? 'Reread one note. Write one sentence.'
+                        : 'Work through one small example',
+                    step: smaller,
+                  });
+                  setStuck(false);
+                  setRunning(true);
+                }}
+              >
+                Continue with this step
+                <ArrowRight size={16} />
+              </button>
+              {(kind === 'I’m too tired' || kind === 'I can’t concentrate') && (
+                <button
+                  className="quiet-button"
+                  onClick={() => {
+                    setStuck(false);
+                    setRunning(false);
+                    setOutcome('Rest is the right next step');
+                    setFinish(true);
+                  }}
+                >
+                  Rest is a useful next step
+                </button>
+              )}
+              <button className="text-button" onClick={() => setKind('')}>
+                Choose a different reason
+              </button>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={finish} onOpenChange={(v) => !saving && setFinish(v)}>
+        <DialogContent className="app-dialog">
+          <DialogHeader>
+            <DialogTitle>What moved forward?</DialogTitle>
+            <DialogDescription>
+              {Math.floor(elapsed / 60)} minutes recorded. A useful attempt
+              counts, too.
+            </DialogDescription>
+          </DialogHeader>
+          <Choice
+            label="Session outcome"
+            value={outcome}
+            options={[
+              'Made progress',
+              'Task completed',
+              'Rest is the right next step',
+            ]}
+            onChange={setOutcome}
+          />
+          <label className="field">
+            <span>A note for future you</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="What changed? Add a test result, commit link, or the next small step."
+              maxLength={10000}
+            />
+          </label>
+          {project && nextIndex >= 0 && (
+            <label className="checkbox-row">
+              <Checkbox checked={mark} onCheckedChange={setMark} />
+              <span>
+                Also complete “{project.milestones[nextIndex].title}”
+                <small>A concrete evidence note is required.</small>
+              </span>
+            </label>
+          )}
+          <button
+            className="primary"
+            onClick={save}
+            disabled={saving || (mark && !notes.trim())}
+          >
+            {saving ? (
+              <LoaderCircle size={16} className="spin" />
+            ) : (
+              <Check size={16} />
+            )}
+            Save this session
+          </button>
+          <button
+            className="text-button"
+            onClick={() => {
+              setFinish(false);
+              setRunning(true);
+            }}
+          >
+            Keep going
+          </button>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
