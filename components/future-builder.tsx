@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AppContext, EntryForm, Choice, type FormConfig } from './shared';
+import { requestJSON, RequestError } from '@/lib/client-request';
 import { Overview } from './overview';
 import { Focus } from './focus';
 const SatView = lazy(() =>
@@ -136,20 +137,11 @@ export default function FutureBuilder() {
   }, []);
   async function refresh() {
     try {
-      const r = await fetch('/api/state'),
-        data = (await r.json()) as {
-          state: AppState;
-          revision: number;
-          githubConfigured: boolean;
-          error?: string;
-        };
-      if (r.status === 401) {
-        setSignInRequired(true);
-        setStatus('Sign in to keep your progress');
-        return;
-      }
-      if (!r.ok)
-        throw new Error(data.error || 'Your saved space could not be opened.');
+      const data = await requestJSON<{
+        state: AppState;
+        revision: number;
+        githubConfigured: boolean;
+      }>('/api/state');
       setSignInRequired(false);
       live.current = { state: data.state, revision: data.revision };
       setRevision(data.revision);
@@ -158,14 +150,21 @@ export default function FutureBuilder() {
         setState(data.state);
         setDemo(false);
         setStatus('All progress saved');
-        const mr = await fetch('/api/market');
-        if (mr.ok) {
-          const md = (await mr.json()) as { snapshots: AppState['snapshots'] };
-          live.current.state = { ...data.state, snapshots: md.snapshots };
-          setState(live.current.state);
-        }
+        // Optional market updates must not block opening or overwrite a newer save.
+        void requestJSON<{ snapshots: AppState['snapshots'] }>('/api/market')
+          .then((md) => {
+            if (pending.current || live.current.revision !== data.revision) return;
+            live.current.state = { ...live.current.state, snapshots: md.snapshots };
+            current.current = live.current.state;
+            setState(live.current.state);
+          }).catch(() => { /* Keep the previously saved market snapshot. */ });
       } else setStatus('Explore, then make it yours');
     } catch (e) {
+      if (e instanceof RequestError && e.status === 401) {
+        setSignInRequired(true);
+        setStatus('Sign in to keep your progress');
+        return;
+      }
       setStatus('Could not load saved progress');
       notify(
         e instanceof Error ? e.message : 'Please reload your space.',
@@ -235,21 +234,16 @@ export default function FutureBuilder() {
     setBusy(true);
     setStatus('Saving your progress…');
     try {
-      const r = await fetch('/api/state', {
+      const data = await requestJSON<{
+        state: AppState;
+        revision: number;
+        githubConfigured: boolean;
+      }>('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...action, revision: live.current.revision }),
       });
-      const data = (await r.json()) as {
-        state: AppState;
-        revision: number;
-        githubConfigured: boolean;
-        error?: string;
-      };
-      if (!r.ok)
-        throw new Error(
-          data.error || 'Could not save. Your entries are still here.',
-        );
+      setSignInRequired(false);
       if (action.type !== 'journey.start')
         data.state.snapshots = current.current.snapshots;
       live.current = { state: data.state, revision: data.revision };
@@ -259,6 +253,7 @@ export default function FutureBuilder() {
       setDemo(false);
       setStatus('All progress saved');
     } catch (e) {
+      if (e instanceof RequestError && e.status === 401) setSignInRequired(true);
       setStatus('A change needs your attention');
       notify(e instanceof Error ? e.message : 'Could not save.', true);
       throw e;
@@ -515,6 +510,9 @@ export default function FutureBuilder() {
             {notice.error ? <Heart size={17} /> : <Check size={17} />}
           </span>
           <p>{notice.text}</p>
+          {notice.error && signInRequired && (
+            <a className="text-button" href="/signin-with-chatgpt?return_to=%2F" target="_blank" rel="noopener noreferrer">Sign in</a>
+          )}
           {notice.error && (
             <button className="text-button" onClick={() => void refresh()}>
               Reload
